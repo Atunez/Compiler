@@ -46,6 +46,10 @@ def parseIntoTokens(regex):
                 i += 1
                 tokens.append(tval)
             case _:
+                if regex[i] == "\\" and regex[i+1]:
+                    tokens.append("\l")
+                    i += 2
+                    continue 
                 tokens.append(regex[i])
                 i += 1
     return tokens
@@ -73,6 +77,10 @@ def buildAST(regex, start, counter):
                 AST.children.append(Node(toAdd , -1, "Or"))
                 return AST, i, c
             case _:
+                if regex[i] == "\l":
+                    AST.children.append(Node(list(), -1, regex[i]))
+                    i += 1
+                    continue
                 unit = Node(list(), c, regex[i])
                 c += 1
                 i += 1
@@ -89,11 +97,21 @@ def buildTree(AST):
     rTree = buildTree(AST[:-1])
     return Node([rTree, AST[-1]], -1, "Conc")
         
-    
+def nullable(node):
+    pass
+
+def fistpos(node):
+    pass
+
+def lastpos(node):
+    pass
+
+def followpos(node):
+    pass
         
         
 
-testRegex = "(a|b)*abb#"
+testRegex = "(a|b|\l)*abb#"
 AST, _, _ = buildAST(parseIntoTokens(testRegex), 0, 1)
 binaryAST = buildTree(AST.children)
 print(AST)
