@@ -1,3 +1,4 @@
+from cProfile import label
 from itertools import count
 
 class Node:
@@ -96,23 +97,97 @@ def buildTree(AST):
     # and children[1] is right
     rTree = buildTree(AST[:-1])
     return Node([rTree, AST[-1]], -1, "Conc")
+
+
+# Return true if this node can accept null 
+def nullable(node:Node):
+    if node.label == "\l" or node.label == "Star":
+        return True
+    if node.value != -1:
+        return False
+    if node.label == "Or":
+        return nullable(node.children[0]) or nullable(node.children[1])
+    else:
+        return nullable(node.children[0]) and nullable(node.children[1])
+
+
+def firstpos(node:Node):
+    retSet = set()
+    if node.label == "\l":
+        return retSet
+    if node.value != -1:
+        retSet.add(node.value)
+        return retSet
+    if node.label == "Or":
+        retSet = firstpos(node.children[0])
+        retSet = retSet.union(firstpos(node.children[1]))
+        return retSet
+    elif node.label == "Conc":
+        if(nullable(node.children[0])):
+            return retSet.union(firstpos(node.children[1]))
+        else:
+            return firstpos(node.children[0])
+    else:
+        return firstpos(node.children[0])
+
+def lastpos(node:Node):
+    retSet = set()
+    if node.label == "\l":
+        return retSet
+    if node.value != -1:
+        retSet.add(node.value)
+        return retSet
+    if node.label == "Or":
+        return firstpos(node.children[0]).union(firstpos(node.children[1]))
+    elif node.label == "Conc":
+        if(nullable(node.children[1])):
+            return firstpos(node.children[0]).union(firstpos(node.children[1]))
+        else:
+            return firstpos(node.children[1])
+    else:
+        return firstpos(node.children[0])
+
+posDic = dict()
+def followpos(node:Node, recurCat:set, lastPosStar: set, firstPosStar: set):
+    global posDic
+    if node.value != -1:
+        if node.value in lastPosStar:
+            posDic[node.value] = recurCat.union(firstPosStar)
+        else:
+            posDic[node.value] = recurCat
+        return
+    if node.label == "Conc":
+        # if n is a conc node, then:
+        # for every value i in lastpos(c1), all of firstpos(c2) are in followpos(i)
+        toGoLeft = firstpos(node.children[1])
+        # namely, the left will get firstpos(c2)
+        # right will get whatever was in the recursion
+        followpos(node.children[0], toGoLeft, lastPosStar, firstPosStar)
+        followpos(node.children[1], recurCat, lastPosStar, firstPosStar)
+    if node.label == "Star":
+        # this node will only have 1 child...
+        # if n is a star node, and i is a position in lastpos(n)
+        # then all of firstpos(n) are in followpos(i)
+        lastPos = lastpos(node)
+        firstPos = firstpos(node)
+        followpos(node.children[0], recurCat, lastPosStar.union(lastPos), firstPosStar.union(firstPos))
+    elif node.label == "Or":
+        # Or does nothing...
+        followpos(node.children[0], recurCat, lastPosStar, firstPosStar)
+        followpos(node.children[1], recurCat, lastPosStar, firstPosStar)
         
-def nullable(node):
-    pass
+def checkPos(binaryAST:Node):
+    print("This is node: " + str(binaryAST))
+    print(firstpos(binaryAST))
+    print(lastpos(binaryAST))
+    for node in binaryAST.children:
+        checkPos(node)
+    pass        
 
-def fistpos(node):
-    pass
-
-def lastpos(node):
-    pass
-
-def followpos(node):
-    pass
-        
-        
-
-testRegex = "(a|b|\l)*abb#"
+testRegex = "(a|b)*abb#"
 AST, _, _ = buildAST(parseIntoTokens(testRegex), 0, 1)
 binaryAST = buildTree(AST.children)
-print(AST)
-print(binaryAST)
+#print(AST)
+#checkPos(binaryAST)
+followpos(binaryAST, set(), set(), set())
+print(posDic)
