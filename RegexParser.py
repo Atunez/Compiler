@@ -56,7 +56,9 @@ def parseIntoTokens(regex):
     return tokens
 
 # Assume a "valid" regex
+LetterByPos = dict()
 def buildAST(regex, start, counter):
+    global LetterByPos
     AST = Node(list(), -1, "Conc")
     i, c = start, counter
     while i < len(regex):
@@ -83,6 +85,7 @@ def buildAST(regex, start, counter):
                     i += 1
                     continue
                 unit = Node(list(), c, regex[i])
+                LetterByPos[c] = regex[i]
                 c += 1
                 i += 1
                 AST.children.append(unit)
@@ -119,12 +122,10 @@ def firstpos(node:Node):
         retSet.add(node.value)
         return retSet
     if node.label == "Or":
-        retSet = firstpos(node.children[0])
-        retSet = retSet.union(firstpos(node.children[1]))
-        return retSet
+        return firstpos(node.children[0]).union(firstpos(node.children[1]))
     elif node.label == "Conc":
         if(nullable(node.children[0])):
-            return retSet.union(firstpos(node.children[1]))
+            return firstpos(node.children[0]).union(firstpos(node.children[1]))
         else:
             return firstpos(node.children[0])
     else:
@@ -184,10 +185,32 @@ def checkPos(binaryAST:Node):
         checkPos(node)
     pass        
 
+alphabet = "ab"
 testRegex = "(a|b)*abb#"
 AST, _, _ = buildAST(parseIntoTokens(testRegex), 0, 1)
 binaryAST = buildTree(AST.children)
 #print(AST)
-#checkPos(binaryAST)
+# checkPos(binaryAST)
 followpos(binaryAST, set(), set(), set())
-print(posDic)
+# print(posDic)
+# print(LetterByPos)
+
+transitions = dict()
+
+startState = frozenset(firstpos(binaryAST))
+Dstates = set()
+Dstates.add(startState)
+seen = set()
+while len(Dstates) != 0:
+    setToConsider = frozenset(Dstates.pop())
+    seen.add(setToConsider)
+    for letter in alphabet:
+        U = set()
+        for node in setToConsider:
+            if LetterByPos[node] == letter:
+                U = U.union(posDic[node])    
+        U = frozenset(U)
+        if U not in seen:
+            Dstates.add(U)
+        transitions[(setToConsider, letter)] = U 
+print(transitions)
