@@ -1,6 +1,3 @@
-from cProfile import label
-from itertools import count
-
 class Node:
     children = list()
     value = -1
@@ -57,8 +54,9 @@ def parseIntoTokens(regex):
 
 # Assume a "valid" regex
 LetterByPos = dict()
+PositionOfEnd = -1
 def buildAST(regex, start, counter):
-    global LetterByPos
+    global LetterByPos, PositionOfEnd
     AST = Node(list(), -1, "Conc")
     i, c = start, counter
     while i < len(regex):
@@ -86,6 +84,8 @@ def buildAST(regex, start, counter):
                     continue
                 unit = Node(list(), c, regex[i])
                 LetterByPos[c] = regex[i]
+                if regex[i] == "#":
+                    PositionOfEnd = c
                 c += 1
                 i += 1
                 AST.children.append(unit)
@@ -186,31 +186,110 @@ def checkPos(binaryAST:Node):
     pass        
 
 alphabet = "ab"
-testRegex = "(a|b)*abb#"
+testRegex = "((a|b)*abb)#"
 AST, _, _ = buildAST(parseIntoTokens(testRegex), 0, 1)
 binaryAST = buildTree(AST.children)
-#print(AST)
+print(AST)
 # checkPos(binaryAST)
 followpos(binaryAST, set(), set(), set())
 # print(posDic)
 # print(LetterByPos)
 
-transitions = dict()
 
-startState = frozenset(firstpos(binaryAST))
-Dstates = set()
-Dstates.add(startState)
-seen = set()
-while len(Dstates) != 0:
-    setToConsider = frozenset(Dstates.pop())
-    seen.add(setToConsider)
+def getTransitionsFromAST(binaryAST):
+    startState = frozenset(firstpos(binaryAST))
+    Dstates = set()
+    Dstates.add(startState)
+    seen = set()
+    transitions = dict()
+    while len(Dstates) != 0:
+        setToConsider = frozenset(Dstates.pop())
+        seen.add(setToConsider)
+        for letter in alphabet:
+            U = set()
+            for node in setToConsider:
+                if LetterByPos[node] == letter:
+                    U = U.union(posDic[node])    
+            U = frozenset(U)
+            if U not in seen:
+                Dstates.add(U)
+            transitions[(setToConsider, letter)] = U 
+    return transitions
+
+acceptingGroups = set()
+def simplifyTableName(transition:dict, posOfAccept):
+    global acceptingGroups
+    startingLetter = "A"
+    betterDictionary = dict()
+    realDictionary = dict()
+    for (key, letter), value in transition.items():
+        if key not in betterDictionary:
+            betterDictionary[key] = startingLetter
+            startingLetter = chr(ord(startingLetter) + 1)
+        if value not in betterDictionary:
+            betterDictionary[value] = startingLetter
+            startingLetter = chr(ord(startingLetter) + 1)
+        if posOfAccept in value: 
+            realDictionary[(betterDictionary[key], letter)] = (betterDictionary[value], True)
+            acceptingGroups.add(betterDictionary[value])
+        else:
+            realDictionary[(betterDictionary[key], letter)] = (betterDictionary[value], False)
+    return realDictionary
+
+def getAccepting(transitions):
+    accept = set()
+    reject = set()
+    for (a,b), _ in transitions.items():
+        if a in acceptingGroups:
+            accept.add(a)
+        else:
+            reject.add(a)
+    return accept, reject
+
+def sameGroup(transitions, group1, group2):
     for letter in alphabet:
-        U = set()
-        for node in setToConsider:
-            if LetterByPos[node] == letter:
-                U = U.union(posDic[node])    
-        U = frozenset(U)
-        if U not in seen:
-            Dstates.add(U)
-        transitions[(setToConsider, letter)] = U 
+        if transitions[(group1, letter)] != transitions[(group2, letter)]:
+            return False
+    return True
+
+# def minimizeDFA(transitions):
+#     partition = [getAccepting(transitions)]
+#     newPartition = []
+#     while True:
+#         for bolier in partition:
+#             for group in bolier:
+#                 # for every group in tempGroups, you only need to look
+#                 # at the last group in each entry to see if they are the "same"
+#                 for state in group:
+#                     # if this is the first time then we have our first partition
+#                     if len(newPartition) == 0:
+#                         newPartition.append(set(state))
+#                     else:
+#                         # for every partition we have
+#                         broke = False
+#                         for i in range(len(newPartition)):
+#                             t = newPartition[i].pop()
+#                             newPartition[i].add(t)
+#                             # if it doesn't go to any partition then add it as a new thing
+#                             if sameGroup(transitions, state, t):
+#                                 newPartition[i].add(state)
+#                                 broke = True
+#                                 break
+#                         if not broke:
+#                             newPartition.append(set(state))
+#         if newPartition == partition:
+#             break
+#         else:
+#             partition = newPartition
+#             newPartition = []
+#     return partition
+#     finalDFA = dict()
+#     for bolier in partition:
+#         for group in bolier:
+#             # select some random representative of this group
+#             pass 
+
+
+transitions = simplifyTableName(getTransitionsFromAST(binaryAST), PositionOfEnd)
 print(transitions)
+# print(minimizeDFA(transitions))
