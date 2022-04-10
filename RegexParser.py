@@ -1,3 +1,7 @@
+from tokenize import group
+from tracemalloc import start
+
+
 class Node:
     children = list()
     value = -1
@@ -185,17 +189,6 @@ def checkPos(binaryAST:Node):
         checkPos(node)
     pass        
 
-alphabet = "ab"
-testRegex = "((a|b)*abb)#"
-AST, _, _ = buildAST(parseIntoTokens(testRegex), 0, 1)
-binaryAST = buildTree(AST.children)
-print(AST)
-# checkPos(binaryAST)
-followpos(binaryAST, set(), set(), set())
-# print(posDic)
-# print(LetterByPos)
-
-
 def getTransitionsFromAST(binaryAST):
     startState = frozenset(firstpos(binaryAST))
     Dstates = set()
@@ -216,9 +209,10 @@ def getTransitionsFromAST(binaryAST):
             transitions[(setToConsider, letter)] = U 
     return transitions
 
-acceptingGroups = set()
+acceptingGroups = set() 
+startingGroupGlobal = None
 def simplifyTableName(transition:dict, posOfAccept):
-    global acceptingGroups
+    global acceptingGroups, startingGroupGlobal
     startingLetter = "A"
     betterDictionary = dict()
     realDictionary = dict()
@@ -229,6 +223,8 @@ def simplifyTableName(transition:dict, posOfAccept):
         if value not in betterDictionary:
             betterDictionary[value] = startingLetter
             startingLetter = chr(ord(startingLetter) + 1)
+        if startingGroupGlobal is None:
+            startingGroupGlobal = betterDictionary[key]
         if posOfAccept in value: 
             realDictionary[(betterDictionary[key], letter)] = (betterDictionary[value], True)
             acceptingGroups.add(betterDictionary[value])
@@ -246,50 +242,84 @@ def getAccepting(transitions):
             reject.add(a)
     return accept, reject
 
-def sameGroup(transitions, group1, group2):
+def sameGroup(transitions, group1, entire_group):
     for letter in alphabet:
-        if transitions[(group1, letter)] != transitions[(group2, letter)]:
+        (t1, _) = transitions[(group1, letter)] 
+        # this group doesn't belong in the whole group, if it maps to something
+        # not in the group
+        if t1 not in entire_group and t1 is not group1:
             return False
-    return True
+    return True    
 
-# def minimizeDFA(transitions):
-#     partition = [getAccepting(transitions)]
-#     newPartition = []
-#     while True:
-#         for bolier in partition:
-#             for group in bolier:
-#                 # for every group in tempGroups, you only need to look
-#                 # at the last group in each entry to see if they are the "same"
-#                 for state in group:
-#                     # if this is the first time then we have our first partition
-#                     if len(newPartition) == 0:
-#                         newPartition.append(set(state))
-#                     else:
-#                         # for every partition we have
-#                         broke = False
-#                         for i in range(len(newPartition)):
-#                             t = newPartition[i].pop()
-#                             newPartition[i].add(t)
-#                             # if it doesn't go to any partition then add it as a new thing
-#                             if sameGroup(transitions, state, t):
-#                                 newPartition[i].add(state)
-#                                 broke = True
-#                                 break
-#                         if not broke:
-#                             newPartition.append(set(state))
-#         if newPartition == partition:
-#             break
-#         else:
-#             partition = newPartition
-#             newPartition = []
-#     return partition
-#     finalDFA = dict()
-#     for bolier in partition:
-#         for group in bolier:
-#             # select some random representative of this group
-#             pass 
+def findGroup(goTo, RepsFor):
+    for i in range(len(RepsFor)):
+        if goTo in RepsFor[i]:
+            return i
 
+def minimizeDFA(transitions):
+    partition = [getAccepting(transitions)]
+    newPartition = []
+    while True:
+        for bolier in partition:
+            for group in bolier:
+                # for every group in tempGroups, you only need to look
+                # at the last group in each entry to see if they are the "same"
+                for state in group:
+                    # if this is the first time then we have our first partition
+                    if len(newPartition) == 0:
+                        newPartition.append(set(state))
+                    else:
+                        # for every partition we have
+                        broke = False
+                        for i in range(len(newPartition)):
+                            # if it doesn't go to any partition then add it as a new thing
+                            if sameGroup(transitions, state, newPartition[i]):
+                                newPartition[i].add(state)
+                                broke = True
+                                break
+                        if not broke:
+                            newPartition.append(set(state))
+        if newPartition == partition:
+            break
+        else:
+            partition = newPartition
+            newPartition = []
+    finalDFA = dict()
+    # to make the finalDFA, you need to figure out
+    # who will represent each group
+    Reps = []
+    RepsFor = []
+    for bolier in partition:
+        RepsFor.append(bolier)
+        for group in bolier:
+            Reps.append(group)
+            break
+    startingGroup = None
+    for i in range(len(Reps)):
+        # this would only happen once...
+        if startingGroupGlobal in RepsFor[i]:
+            startingGroup = Reps[i]
+        for letter in alphabet:
+            (goTo, end) = transitions[(Reps[i], letter)]
+            groupIdx = findGroup(goTo, RepsFor)
+            # the group this needs to go is itself...
+            finalDFA[(Reps[i], letter)] = (Reps[groupIdx], end)
+            
+    return finalDFA, startingGroup
+            
+
+alphabet = "ab"
+testRegex = "((a|b)*a|b)#"
+AST, _, _ = buildAST(parseIntoTokens(testRegex), 0, 1)
+binaryAST = buildTree(AST.children)
+print(AST)
+# checkPos(binaryAST)
+followpos(binaryAST, set(), set(), set())
+# print(posDic)
+# print(LetterByPos)
 
 transitions = simplifyTableName(getTransitionsFromAST(binaryAST), PositionOfEnd)
+
 print(transitions)
-# print(minimizeDFA(transitions))
+finalDFA, startingGroup = minimizeDFA(transitions)
+print(finalDFA)
