@@ -1,5 +1,6 @@
 from tokenize import group
 from tracemalloc import start
+from turtle import position
 
 
 class Node:
@@ -211,9 +212,9 @@ def getTransitionsFromAST(binaryAST):
 
 acceptingGroups = set() 
 startingGroupGlobal = None
-def simplifyTableName(transition:dict, posOfAccept):
+def simplifyTableName(transition:dict, posOfAccept, startingLetterIn):
     global acceptingGroups, startingGroupGlobal
-    startingLetter = "A"
+    startingLetter = startingLetterIn
     betterDictionary = dict()
     realDictionary = dict()
     for (key, letter), value in transition.items():
@@ -225,7 +226,7 @@ def simplifyTableName(transition:dict, posOfAccept):
             startingLetter = chr(ord(startingLetter) + 1)
         if startingGroupGlobal is None:
             startingGroupGlobal = betterDictionary[key]
-        if posOfAccept in value: 
+        if posOfAccept in value or posOfAccept == value: 
             realDictionary[(betterDictionary[key], letter)] = (betterDictionary[value], True)
             acceptingGroups.add(betterDictionary[value])
         else:
@@ -295,6 +296,7 @@ def minimizeDFA(transitions):
             Reps.append(group)
             break
     startingGroup = None
+    print(len(Reps))
     for i in range(len(Reps)):
         # this would only happen once...
         if startingGroupGlobal in RepsFor[i]:
@@ -308,18 +310,57 @@ def minimizeDFA(transitions):
     return finalDFA, startingGroup
             
 
+def combinationMachine(firstTransitions, secondTransitions):
+    combinedDFA = dict()
+    endingStates = []
+    for letter in alphabet:
+        for (key, inp), (value, out) in firstTransitions.items(): 
+            if inp != letter:
+                continue
+            for (key2, inp2), (value2, out2) in secondTransitions.items():  
+                if inp2 != letter:
+                    continue
+                # given Qi, a = Qj and Qi', a = Qj'
+                # then, (Qi, Qi'), a = (Qj, Qj')
+                combinedDFA[((key, key2), letter)] = (value, value2)
+                if out2 and out:
+                    endingStates.append((value,value2))
+    return combinedDFA, endingStates
+
 alphabet = "ab"
-testRegex = "((a|b)*a|b)#"
+testRegex = "((a*ba*)*)#"
 AST, _, _ = buildAST(parseIntoTokens(testRegex), 0, 1)
 binaryAST = buildTree(AST.children)
-print(AST)
-# checkPos(binaryAST)
 followpos(binaryAST, set(), set(), set())
-# print(posDic)
-# print(LetterByPos)
+basicTran = simplifyTableName(getTransitionsFromAST(binaryAST), PositionOfEnd, "R")
+pOend1 = PositionOfEnd
+start1 = startingGroupGlobal
 
-transitions = simplifyTableName(getTransitionsFromAST(binaryAST), PositionOfEnd)
+testRegex = "((a|b)*aa(a|b)*)#"
+AST, _, _ = buildAST(parseIntoTokens(testRegex), 0, 1)
+binaryAST = buildTree(AST.children)
+followpos(binaryAST, set(), set(), set())
+startingGroupGlobal = None
+basicTran2 = simplifyTableName(getTransitionsFromAST(binaryAST), PositionOfEnd, "A")
+pOend2 = PositionOfEnd
+start2 = startingGroupGlobal
 
-print(transitions)
-finalDFA, startingGroup = minimizeDFA(transitions)
+bigDFA, accpetingStates = combinationMachine(basicTran, basicTran2)
+print(bigDFA)
+print(accpetingStates)
+
+bigDFA = simplifyTableName(bigDFA, accpetingStates[0], "A")
+
+startingGroupGlobal = (start1, start2)
+
+
+print(startingGroupGlobal)
+print(bigDFA)
+
+finalDFA, startingGroup = minimizeDFA(bigDFA)
 print(finalDFA)
+# print(basicTran)
+# transitionsFirst = simplifyTableName(basicTran, PositionOfEnd, "A")
+# print(transitionsFirst)
+# finalDFA, startingGroup = minimizeDFA(transitionsFirst)
+# print(finalDFA)
